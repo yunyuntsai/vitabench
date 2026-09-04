@@ -1,14 +1,44 @@
 import os
+import re
 import yaml
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_repo_root = Path(__file__).resolve().parents[2]
+_local_models_yaml = _repo_root / "configs" / "models.yaml"
 _models_yaml_path = Path(__file__).parent / "models.yaml"
 if os.environ.get("VITA_MODEL_CONFIG_PATH", None):
     _models_yaml_path = Path(os.environ.get("VITA_MODEL_CONFIG_PATH"))
+elif _local_models_yaml.exists():
+    _models_yaml_path = _local_models_yaml
 
 if not os.path.exists(str(_models_yaml_path)):
     raise FileNotFoundError(
         f"Model configuration file ({_models_yaml_path}) dose not exists, you should create it first.")
+
+
+def _substitute_env_vars(text: str) -> str:
+    pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
+
+    def replace_var(match):
+        var_name = match.group(1)
+        default_value = match.group(2) if match.group(2) is not None else ""
+        return os.getenv(var_name, default_value)
+
+    return re.sub(pattern, replace_var, text)
+
+
+def _recursive_substitute(data):
+    if isinstance(data, dict):
+        return {key: _recursive_substitute(value) for key, value in data.items()}
+    if isinstance(data, list):
+        return [_recursive_substitute(item) for item in data]
+    if isinstance(data, str):
+        return _substitute_env_vars(data)
+    return data
 
 
 def _deep_merge_dict(base_dict: dict, override_dict: dict) -> dict:
@@ -26,6 +56,7 @@ def _deep_merge_dict(base_dict: dict, override_dict: dict) -> dict:
 try:
     with open(_models_yaml_path, 'r') as f:
         models_config_yaml = yaml.load(f, Loader=yaml.FullLoader)
+    models_config_yaml = _recursive_substitute(models_config_yaml)
 
     default_model_config = models_config_yaml.get('default', {})
 
@@ -59,6 +90,6 @@ DEFAULT_EVALUATION_TYPE = "trajectory"
 # LLM
 DEFAULT_AGENT_IMPLEMENTATION = "llm_agent"
 DEFAULT_USER_IMPLEMENTATION = "user_simulator"
-DEFAULT_LLM_AGENT = "gpt-4.1"
+DEFAULT_LLM_AGENT = "gpt-5.4-nano"
 DEFAULT_LLM_USER = "gpt-4.1"
 DEFAULT_LLM_EVALUATOR = "anthropic.claude-3.7-sonnet"

@@ -1,5 +1,6 @@
 import json
 import multiprocessing
+import os
 import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -157,8 +158,13 @@ def run_domain(config: RunConfig) -> Results:
         language=config.language,
     )
     
-    metrics = compute_metrics(simulation_results)
-    ConsoleDisplay.display_agent_metrics(metrics)
+    if simulation_results.simulations:
+        metrics = compute_metrics(simulation_results)
+        ConsoleDisplay.display_agent_metrics(metrics)
+    else:
+        ConsoleDisplay.console.print(
+            "\n[bold yellow]No completed simulations to score. Skipping metrics.[/bold yellow]"
+        )
 
     if config.csv_output_file and simulation_results.simulations:
         try:
@@ -547,6 +553,15 @@ def _run_task_internal(
     else:
         environment_constructor = registry.get_env_constructor(domain)
         environment = environment_constructor(task.environment, language)
+    # Gated per-domain policy routing (VitaBench adapter §1.4; Architecture Escalation).
+    # No-op unless VITA_POLICY_MODE=routed. Routes on USER-VISIBLE intent only
+    # (user persona + instructions) — never evaluation_criteria / rubrics. Non-matching
+    # tasks degrade to the pristine benchmark agent (no perturbation). Results under
+    # VITA_POLICY_MODE=routed are a CUSTOM routed agent, NOT benchmark-comparable.
+    if os.environ.get("VITA_POLICY_MODE") == "routed" and "," not in domain:
+        from vita.environment.environment import get_agent_policy as _get_agent_policy
+        _route_text = str(task.user_scenario.user_profile) + "\n" + str(task.instructions)
+        environment.policy = _get_agent_policy(language, domain=domain, route_text=_route_text)
     AgentConstructor = registry.get_agent_constructor(agent)
 
     solo_mode = False

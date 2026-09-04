@@ -39,7 +39,14 @@ class ConsoleDisplay:
             elif isinstance(obj, (list, tuple)):
                 return [json_serializable(item) for item in obj]
             elif isinstance(obj, dict):
-                return {k: json_serializable(v) for k, v in obj.items()}
+                redacted = {}
+                for k, v in obj.items():
+                    key = str(k).lower()
+                    if key in {"authorization", "api_key", "api-key"} or "token" in key or "secret" in key:
+                        redacted[k] = "<redacted>"
+                    else:
+                        redacted[k] = json_serializable(v)
+                return redacted
             else:
                 return obj
 

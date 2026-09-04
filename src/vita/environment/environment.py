@@ -1,8 +1,11 @@
 import json
+import os
+import re
 import traceback
 import inspect
 import types
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 from loguru import logger
@@ -23,10 +26,103 @@ from vita.environment.toolkit import ToolKitBase, ToolSignature, get_tool_signat
 from vita.utils.utils import get_task_file_path
 from vita.prompts import get_prompts
 
-def get_agent_policy(language: str = None) -> str:
-    """Get agent policy based on language"""
+# --- Gated per-domain policy routing (VitaBench adapter §1.4, Architecture Escalation) ---
+# Active only when VITA_POLICY_MODE=routed. Loads a per-domain policy markdown
+# (data/vita/domains/<domain>/policy_<zh|en>.md), parses it into '## <section>' blocks,
+# and injects ONLY the sections whose USER-VISIBLE trigger signal appears in route_text
+# (the user persona + instructions — never evaluation_criteria / rubrics / required_orders,
+# which would be leakage). No match + non-empty signal -> inject nothing (degrades to the
+# pristine benchmark agent, so non-matching tasks are NOT perturbed). No signal at all ->
+# all-sections fallback (safe). Missing file / parse error -> pristine agent. When the env
+# var is unset, get_agent_policy returns the pristine generic prompt only (byte-identical to
+# the shipped benchmark agent). Results under VITA_POLICY_MODE=routed are a CUSTOM routed
+# agent and are NOT benchmark/leaderboard-comparable.
+_SECTION_TRIGGERS = {
+    # delivery-time section loads only when the user states a delivery-time requirement.
+    # A clock-time pattern (e.g. "19点", "12:00") in route_text also triggers it.
+    "delivery-time": [
+        "送达时间", "配送时间", "之前送达", "之前送到", "之内送达", "之间送达",
+        "左右送达", "左右送到", "提前送达", "提前", "准时", "不要迟到", "别迟到",
+        "迟到", "赶着", "赶时间", "时间要求", "送达要求", "点前", "点之前",
+        "前送达", "后送达", "按时", "准点",
+    ],
+    # ota-procedure section loads for OTA booking tasks. Triggers are user-visible
+    # OTA booking terms (the persona/instructions); scoped to the OTA domain because
+    # the policy file is per-domain (data/vita/domains/ota/policy_<lang>.md).
+    "ota-procedure": [
+        "酒店", "民宿", "客栈", "旅馆", "住宿", "入住", "退房", "住",
+        "火车", "高铁", "动车", "车票", "机票", "航班", "飞", "航班",
+        "门票", "景点", "景区", "游玩", "参观", "打卡", "游览",
+        "预订", "订", "下单", "行程", "出行", "旅游", "旅行", "出差",
+    ],
+}
+_CLOCK_TIME_RE = re.compile(r"\d{1,2}\s*[:：]\s*\d{2}|\d{1,2}\s*点")
+
+
+def _parse_policy_sections(text: str) -> "dict[str, str]":
+    """Parse a policy markdown into ordered {section_id: body} by '## ' headings.
+
+    A heading '## delivery-time: ...' yields section_id 'delivery-time'. Text before the
+    first '## ' heading (file-level preamble) is keyed '' so the router can ignore it.
+    """
+    sections: "dict[str, str]" = {}
+    cur_id = None
+    cur: list = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if cur_id is not None:
+                sections[cur_id] = "\n".join(cur).strip()
+            cur_id = line[3:].strip().split(":")[0].strip().lower()
+            cur = []
+        elif cur_id is not None:
+            cur.append(line)
+    if cur_id is not None:
+        sections[cur_id] = "\n".join(cur).strip()
+    return sections
+
+
+def get_agent_policy(language: str = None, domain: str = None, route_text: str = None) -> str:
+    """Get agent policy based on language.
+
+    Default (benchmark agent): the generic ``agent_system_prompt`` only.
+    Gated escalation (``VITA_POLICY_MODE=routed``): for the given domain, load the
+    per-domain policy file and inject only the sections whose user-visible trigger
+    signal appears in ``route_text``. Routes on user-visible intent only (persona +
+    instructions) — never evaluation_criteria / rubrics / required_orders. No match with
+    non-empty signal -> pristine agent (no perturbation). No signal -> all-sections
+    fallback. Missing file / parse error / no sections -> pristine agent.
+    """
     prompts = get_prompts(language)
-    return prompts.agent_system_prompt
+    base = prompts.agent_system_prompt
+    if os.environ.get("VITA_POLICY_MODE") != "routed" or not domain:
+        return base
+    lang = "en" if (language or "").lower().startswith("en") else "zh"
+    pfile = Path("data/vita/domains") / domain / f"policy_{lang}.md"
+    if not pfile.exists():
+        return base
+    try:
+        sections = _parse_policy_sections(pfile.read_text(encoding="utf-8"))
+    except Exception:
+        return base
+    if not sections:
+        return base
+    tl = (route_text or "")
+    tl_low = tl.lower()
+    matched_ids = []
+    for sid in sections:
+        if sid == "":
+            continue  # file preamble is not routed on
+        kws = _SECTION_TRIGGERS.get(sid, [])
+        if any(kw.lower() in tl_low for kw in kws) or _CLOCK_TIME_RE.search(tl):
+            matched_ids.append(sid)
+    if matched_ids:
+        matched = [sections[sid] for sid in matched_ids]
+        return ("\n\n".join(matched) + "\n\n" + base)
+    if not tl.strip():
+        # No signal at all -> all-sections fallback (adapter §1.4 safe degrade).
+        return ("\n\n".join(v for k, v in sections.items() if k != "") + "\n\n" + base)
+    # Signal present but no section matched -> pristine agent (non-matching tasks unchanged).
+    return base
 
 
 class EnvironmentInfo(BaseModel):

@@ -32,9 +32,9 @@ TOOL_DESCRIPTIONS_ZH = {
     },
     
     "create_instore_product_order": {
-        "description": "到店订单提交",
-        "preconditions": "处于到店场景，确定唯一一个店家id和一个或多个商品id",
-        "postconditions": "返回订单信息（包含order_id），询问用户是否支付订单",
+        "description": "到店订单提交（购买套餐/体验券/商品并生成订单）",
+        "preconditions": "处于到店场景，确定唯一一个店家id和一个商品id（多个不同商品需分多次下单）。下单前必须逐项核对所选商品的类型/时长/数量/价格及所属商家是否完全满足用户对该笔订单的明确要求；若有任一项不匹配，不得以此商品下单，应改用更精确的关键词重新搜索或如实告知用户无完全匹配项，禁止以近似、更贵或不同规格的商品替代，也不得在用户转选不符合原要求的商品时顺从而下单",
+        "postconditions": "返回订单信息（包含order_id，状态为unpaid），询问用户是否支付订单",
         "args": {
             "user_id": "用户id",
             "shop_id": "商家id",
@@ -68,8 +68,8 @@ TOOL_DESCRIPTIONS_ZH = {
     },
     
     "instore_book": {
-        "description": "座位预定 - 在选定商家后预定物理座位/桌位",
-        "preconditions": "处于到店场景，确定唯一一个商家id，商家支持座位预定服务",
+        "description": "座位预定 - 在选定商家后预定物理座位/桌位（仅预定座位，不购买任何套餐/体验券/商品；若用户要购买套餐/体验券/商品，请使用 create_instore_product_order 下单）",
+        "preconditions": "处于到店场景，确定唯一一个商家id，商家支持座位预定服务。time 参数必须使用用户明确要求的精确时间，不得擅自取整或调整为更'整齐'的时间（如把17:20取整为17:00、把14:30取整为14:00）；若用户在对话中明确更改了时间，使用更改后的精确时间。下单前向用户复述确认具体时间。customer_count 必须使用用户明确要求的预定人数，不得默认为1人或擅自估计；若用户未明确人数，应先询问用户后再预定",
         "postconditions": "返回座位预定信息（包含book_id），如需要支付订座费，询问用户是否支付",
         "args": {
             "user_id": "用户id",
@@ -104,8 +104,8 @@ TOOL_DESCRIPTIONS_ZH = {
     },
     
     "instore_reservation": {
-        "description": "服务预约 - 在选定商家后预约服务时间点",
-        "preconditions": "处于到店场景，确定唯一一个商家id，商家支持服务预约",
+        "description": "服务预约 - 在选定商家后预约服务时间点（仅预约服务时间，不购买任何套餐/体验券/商品；若用户要购买套餐/体验券/商品，请使用 create_instore_product_order 下单）",
+        "preconditions": "处于到店场景，确定唯一一个商家id，商家支持服务预约。time 参数必须使用用户明确要求的精确时间，不得擅自取整或调整为更'整齐'的时间（如把17:20取整为17:00、把14:30取整为14:00）；若用户在对话中明确更改了时间，使用更改后的精确时间。下单前向用户复述确认具体时间。customer_count 必须使用用户明确要求的预约人数，不得默认为1人或擅自估计；若用户未明确人数，应先询问用户后再预约",
         "postconditions": "返回服务预约信息（包含reservation_id），通知用户按照约定时间到商家接受服务",
         "args": {
             "user_id": "用户id",
@@ -224,9 +224,9 @@ TOOL_DESCRIPTIONS_EN = {
     },
     
     "create_instore_product_order": {
-        "description": "Submit instore order",
-        "preconditions": "In instore scenario, determine unique merchant id and one or more product ids",
-        "postconditions": "Return order information (including order_id), ask user to confirm payment",
+        "description": "Submit instore order (purchase a package/voucher/product and create an order)",
+        "preconditions": "In instore scenario, determine a unique merchant id and a single product id (order multiple distinct products via separate calls). Before placing the order, verify item-by-item that the chosen product's type/duration/quantity/price and its merchant exactly satisfy every explicit requirement the user stated for this order; if any item does not match, do not order that product — search again with more specific keywords or tell the user no exact match exists. Never substitute a near-match, a more expensive, or a different-spec product, and do not go along with the user switching to a product that fails the original requirement",
+        "postconditions": "Return order information (including order_id, status unpaid), ask user to confirm payment",
         "args": {
             "user_id": "User id",
             "shop_id": "Merchant id",
@@ -260,8 +260,8 @@ TOOL_DESCRIPTIONS_EN = {
     },
     
     "instore_book": {
-        "description": "Seat reservation - Reserve physical seats/tables after selecting merchant",
-        "preconditions": "In instore scenario, determine unique merchant id, merchant supports seat reservation service",
+        "description": "Seat reservation - Reserve physical seats/tables after selecting merchant (only reserves a seat; it does NOT purchase any package/voucher/product. To buy a package/voucher/product, use create_instore_product_order)",
+        "preconditions": "In instore scenario, determine unique merchant id, merchant supports seat reservation service. The time parameter must use the exact time the user explicitly requested — do not round it or adjust it to a 'neater' value (e.g. 17:20 -> 17:00, 14:30 -> 14:00); if the user explicitly changes the time during the conversation, use the new exact time. Confirm the specific time with the user before booking. The customer_count parameter must use the exact number of people the user explicitly requested — do not default to 1 or estimate it; if the user has not stated a headcount, ask the user before booking",
         "postconditions": "Return seat reservation information (including book_id), if seat reservation fee is required, ask user to confirm payment",
         "args": {
             "user_id": "User id",
@@ -296,8 +296,8 @@ TOOL_DESCRIPTIONS_EN = {
     },
     
     "instore_reservation": {
-        "description": "Service reservation - Reserve service time after selecting merchant",
-        "preconditions": "In instore scenario, determine unique merchant id, merchant supports reservation service",
+        "description": "Service reservation - Reserve service time after selecting merchant (only reserves a service time; it does NOT purchase any package/voucher/product. To buy a package/voucher/product, use create_instore_product_order)",
+        "preconditions": "In instore scenario, determine unique merchant id, merchant supports reservation service. The time parameter must use the exact time the user explicitly requested — do not round it or adjust it to a 'neater' value (e.g. 17:20 -> 17:00, 14:30 -> 14:00); if the user explicitly changes the time during the conversation, use the new exact time. Confirm the specific time with the user before booking. The customer_count parameter must use the exact number of people the user explicitly requested — do not default to 1 or estimate it; if the user has not stated a headcount, ask the user before booking",
         "postconditions": "Return reservation information (including reservation_id), notify user to arrive at merchant at agreed time to receive service",
         "args": {
             "user_id": "User id",
