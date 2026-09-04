@@ -37,3 +37,15 @@ ENV/
 # special files
 **/simulations
 **/configs
+
+# retest / regrade run outputs
+*_retest_rg
+*_retest_regrade
+*_regrade.json
+
+# backup files
+*.opt_backup
+
+# claude session-local / run outputs
+.claude/scheduled_tasks.lock
+.claude/skills/workflow-optimize/runs/
